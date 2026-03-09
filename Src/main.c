@@ -31,6 +31,11 @@ typedef struct{
 	int16_t left_motor_speed;
 }motor_param_t;
 
+typedef enum{
+	SPEED = 0xA1,
+	DISTANCE =0xA2,
+}msg_t;
+
 static volatile QueueHandle_t xFlysky;
 static volatile QueueHandle_t xParamToSend;
 
@@ -58,22 +63,47 @@ void vTask(void *pvParameters)
 void vParseTask(void *pvParameters)
 {
 	uint32_t param[9];
-	int16_t right_motor_speed;
-	int16_t left_motor_speed;
+	int16_t right_motor_speed, left_motor_speed, speed, turn;
 
 	while(1)
 	{
 		xQueueReceive(xFlysky, &param, portMAX_DELAY);
 
-		right_motor_speed = ((int16_t)param[1] - 5940) / 20;
-		left_motor_speed = ((int16_t)param[1] - 5940) / 20;
+		turn = ((int16_t)param[0] - 5940) / 20;
+		speed = ((int16_t)param[1] - 5940) / 20;
+
+		if(speed > 0 && turn > 0)
+		{
+			right_motor_speed = speed - turn;
+			left_motor_speed = speed;
+		}
+		else if(speed > 0 && turn < 0)
+		{
+			right_motor_speed = speed;
+			left_motor_speed = speed + turn;
+		}
+		else if(speed < 0 && turn > 0)
+		{
+			right_motor_speed = speed + turn;
+			left_motor_speed = speed;
+		}
+		else if(speed < 0 && turn < 0)
+		{
+			right_motor_speed = speed;
+			left_motor_speed = speed - turn;
+		}
+		else
+		{
+			right_motor_speed = speed;
+			left_motor_speed = speed;
+		}
 
 		if(abs(right_motor_speed - dc_driver.right_motor_speed) > 10 || abs(left_motor_speed - dc_driver.left_motor_speed) > 10)
 		{
 			dc_driver.right_motor_speed = right_motor_speed;
 			dc_driver.left_motor_speed = left_motor_speed;
 
-			halUsart3SendCommand(0, right_motor_speed, left_motor_speed, 10);
+			halUsart3SendCommand(SPEED, right_motor_speed, left_motor_speed, 100);
 		}
 	}
 }
