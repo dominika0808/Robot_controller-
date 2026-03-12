@@ -118,62 +118,24 @@ Status_t Usart3DMAInit(void)
 
 Status_t Usart3TransmitDMA(uint32_t addr_tx)
 {
-	//Disable channel
 	DMA1_Channel2->CCR = 0;
-
-	//Set the peripheral register address
 	DMA1_Channel2->CPAR = (uint32_t)&USART3->TDR;
-
-	//Set the memory address
 	DMA1_Channel2->CMAR = addr_tx;
-
-	//Numbers of data
 	DMA1_Channel2->CNDTR = 5;
 
-	//Channel priority - medium
-	DMA1_Channel2->CCR |= DMA_CCR_PL_0;
-
-	//Data transfer direction
-	DMA1_Channel2->CCR |= DMA_CCR_DIR;
-
-	//Interrupt - transfer error, transfer complete
-	DMA1_Channel2->CCR |= DMA_CCR_TEIE;
-	DMA1_Channel2->CCR |= DMA_CCR_TCIE;
-
-	//Memory increment mode
-	DMA1_Channel2->CCR |= DMA_CCR_MINC;
-
-	//DMA enable
-	DMA1_Channel2->CCR |= DMA_CCR_EN;
+	DMA1_Channel2->CCR |= DMA_CCR_PL_0 | DMA_CCR_DIR | DMA_CCR_TEIE | DMA_CCR_TCIE | DMA_CCR_MINC | DMA_CCR_EN;
 
 	return STATUS_OK;
 }
 
 Status_t Usart3ReceiverDMA(uint32_t addr_rx)
 {
-	//Disable channel
 	DMA1_Channel3->CCR = 0;
-
-	//Set the peripheral register address
 	DMA1_Channel3->CPAR = (uint32_t)&USART3->RDR;
-
-	//Set the memory address
 	DMA1_Channel3->CMAR = addr_rx;
-
-	//Numbers of data
 	DMA1_Channel3->CNDTR = 5;
 
-	//Channel priority - medium
-	DMA1_Channel3->CCR |= DMA_CCR_PL_0;
-
-	//Interrupt - transfer error, transfer complete
-	DMA1_Channel3->CCR |= DMA_CCR_TEIE;
-
-	//Memory increment mode
-	DMA1_Channel3->CCR |= DMA_CCR_MINC;
-
-	//DMA enable
-	DMA1_Channel3->CCR |= DMA_CCR_EN;
+	DMA1_Channel3->CCR |= DMA_CCR_PL_0 | DMA_CCR_TEIE | DMA_CCR_MINC | DMA_CCR_EN;
 
 	return STATUS_OK;
 }
