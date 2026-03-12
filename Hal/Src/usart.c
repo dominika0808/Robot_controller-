@@ -1,11 +1,16 @@
 #include "usart.h"
 #include "stm32l4xx.h"
 #include "time.h"
+#include <stddef.h>
 
-#define AHB2_CLOCK	4000000
-#define USART2_BAUD_RATE 115200
+#define AHB2_CLOCK			4000000
+#define USART2_BAUD_RATE 	115200
+#define DMA_CSELR_C2S_1 	(0x1UL << (5U))
+#define DMA_CSELR_C3S_1 	(0x1UL << (5U))
 
-HAL_Status_t halUsart2Init(void)
+static volatile void (*_usartCallback)(void) = NULL;
+
+Status_t halUsart2Init(void)
 {
 	//Turn-on GPIO clock
 	RCC->AHB2ENR |= RCC_AHB2ENR_GPIOAEN;
@@ -31,10 +36,10 @@ HAL_Status_t halUsart2Init(void)
 	USART2->CR1 |= USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 
 
-	return HAL_OK;
+	return STATUS_OK;
 }
 
-HAL_Status_t halUsart2Put(const char data, uint32_t timeout)
+Status_t halUsart2Put(const char data, uint32_t timeout)
 {
 	uint32_t ticks = halGetTicks();
 
@@ -42,36 +47,38 @@ HAL_Status_t halUsart2Put(const char data, uint32_t timeout)
 	{
 		if(halGetTicks() > ticks + timeout)
 		{
-			return HAL_TIMEOUT;
+			return STATUS_TIMEOUT;
 		}
 
 	}
 
 	USART2->TDR = data;
 
-	return HAL_OK;
+	return STATUS_OK;
 }
 
-HAL_Status_t halUsart2Send(const char* txt, uint32_t timeout)
+Status_t halUsart2Send(const char* txt, uint32_t timeout)
 {
 	while(*txt != 0)
 	{
-		HAL_Status_t status = halUsart2Put(*txt, timeout);
+		Status_t status = halUsart2Put(*txt, timeout);
 
-		if(status == HAL_TIMEOUT)
+		if(status == STATUS_TIMEOUT)
 		{
-			return HAL_TIMEOUT;
+			return STATUS_TIMEOUT;
 		}
 		txt++;
 	}
 
-	return HAL_OK;
+	return STATUS_OK;
 }
 
-HAL_Status_t halUsart3Init(void)
+Status_t Usart3DMAInit(void)
 {
-	//Turn-on GPIO clock
+	//Clock configuration
 	RCC->AHB2ENR |= RCC_AHB2ENR_GPIOBEN;
+	RCC->APB1ENR1 |= RCC_APB1ENR1_USART3EN;
+	RCC->AHB1ENR |= RCC_AHB1ENR_DMA1EN;
 
 	//Set PB10 and PB11 as alternative function
 	GPIOB->MODER &= ~(GPIO_MODER_MODE10_0);
@@ -84,63 +91,109 @@ HAL_Status_t halUsart3Init(void)
 	//PB11 open-drein
 	GPIOB->OTYPER |= GPIO_OTYPER_OT11;
 
-	//Turn-on USART3 clock
-	RCC->APB1ENR1 = RCC_APB1ENR1_USART3EN;
-
 	//USART baud rate 115200
 	USART3->BRR = AHB2_CLOCK/USART2_BAUD_RATE;
+
+	//DMA transmitter and receiver enable
+	USART3->CR3 |= USART_CR3_DMAT;
+	USART3->CR3 |= USART_CR3_DMAR;
+
+	//DMA channel selection
+	DMA1_CSELR->CSELR |= DMA_CSELR_C2S_1;
+	DMA1_CSELR->CSELR |= DMA_CSELR_C3S_1;
+
+	NVIC_SetPriority(DMA1_Channel2_IRQn, 15);
+	//NVIC_SetPriority(DMA1_Channel3_IRQn, 15);
+	NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+	//NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+
+	//IDEL interrupt
+	//USART3->CR1 |= USART_CR1_IDLEIE;
 
 	//USART enable
 	USART3->CR1 |= USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
 
-
-	return HAL_OK;
+	return STATUS_OK;
 }
 
-HAL_Status_t halUsart3Put(uint8_t data, uint32_t timeout)
+Status_t Usart3TransmitDMA(uint32_t addr_tx)
 {
-	uint32_t ticks = halGetTicks();
+	//Disable channel
+	DMA1_Channel2->CCR = 0;
 
-	while(!(USART3->ISR & USART_ISR_TXE))
+	//Set the peripheral register address
+	DMA1_Channel2->CPAR = (uint32_t)&USART3->TDR;
+
+	//Set the memory address
+	DMA1_Channel2->CMAR = addr_tx;
+
+	//Numbers of data
+	DMA1_Channel2->CNDTR = 5;
+
+	//Channel priority - medium
+	DMA1_Channel2->CCR |= DMA_CCR_PL_0;
+
+	//Data transfer direction
+	DMA1_Channel2->CCR |= DMA_CCR_DIR;
+
+	//Interrupt - transfer error, transfer complete
+	DMA1_Channel2->CCR |= DMA_CCR_TEIE;
+	DMA1_Channel2->CCR |= DMA_CCR_TCIE;
+
+	//Memory increment mode
+	DMA1_Channel2->CCR |= DMA_CCR_MINC;
+
+	//DMA enable
+	DMA1_Channel2->CCR |= DMA_CCR_EN;
+
+	return STATUS_OK;
+}
+
+Status_t Usart3ReceiverDMA(uint32_t addr_rx)
+{
+	//Disable channel
+	DMA1_Channel3->CCR = 0;
+
+	//Set the peripheral register address
+	DMA1_Channel3->CPAR = (uint32_t)&USART3->RDR;
+
+	//Set the memory address
+	DMA1_Channel3->CMAR = addr_rx;
+
+	//Numbers of data
+	DMA1_Channel3->CNDTR = 5;
+
+	//Channel priority - medium
+	DMA1_Channel3->CCR |= DMA_CCR_PL_0;
+
+	//Interrupt - transfer error, transfer complete
+	DMA1_Channel3->CCR |= DMA_CCR_TEIE;
+
+	//Memory increment mode
+	DMA1_Channel3->CCR |= DMA_CCR_MINC;
+
+	//DMA enable
+	DMA1_Channel3->CCR |= DMA_CCR_EN;
+
+	return STATUS_OK;
+}
+
+Status_t Usart3RegisterCallback(void(*callback)(void))
+{
+	_usartCallback = callback;
+
+	return STATUS_OK;
+}
+
+void DMA1_CH2_IRQHandler(void)
+{
+	if(DMA1->ISR & DMA_ISR_GIF2)
 	{
-		if(halGetTicks() > ticks + timeout)
+		if(_usartCallback != NULL)
 		{
-			return HAL_TIMEOUT;
+			_usartCallback();
 		}
+
+		DMA1->IFCR |= DMA_IFCR_CGIF2 | DMA_IFCR_CHTIF2 | DMA_IFCR_CTCIF2;
 	}
-
-	USART3->TDR = data;
-
-	return HAL_OK;
-}
-
-HAL_Status_t halUsart3SendCommand(uint8_t command, int16_t right_motor, int16_t left_motor, uint32_t timeout)
-{
-	HAL_Status_t status = halUsart3Put(command, timeout);
-
-	if(status == HAL_TIMEOUT) return HAL_TIMEOUT;
-
-	uint8_t rm1 = (right_motor >> 8) & 0xFF;
-	uint8_t rm2 = right_motor & 0xFF;
-
-	uint8_t lm1 = (left_motor >> 8) & 0xFF;
-	uint8_t lm2 = left_motor & 0xFF;
-
-	HAL_Status_t status1 = halUsart3Put(rm1, timeout);
-
-	if(status1 == HAL_TIMEOUT) return HAL_TIMEOUT;
-
-	HAL_Status_t status2 = halUsart3Put(rm2, timeout);
-
-	if(status2 == HAL_TIMEOUT) return HAL_TIMEOUT;
-
-	HAL_Status_t status3 = halUsart3Put(lm1, timeout);
-
-	if(status3 == HAL_TIMEOUT) return HAL_TIMEOUT;
-
-	HAL_Status_t status4 = halUsart3Put(lm2, timeout);
-
-	if(status4 == HAL_TIMEOUT) return HAL_TIMEOUT;
-
-	return HAL_OK;
 }

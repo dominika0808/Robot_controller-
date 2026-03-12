@@ -25,6 +25,9 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "event_groups.h"
+
+#define USART3_READY_EVT (1 << 0)
 
 typedef struct{
 	int16_t right_motor_speed;
@@ -38,11 +41,14 @@ typedef enum{
 
 static volatile QueueHandle_t xFlysky;
 static volatile QueueHandle_t xParamToSend;
+static volatile EventGroupHandle_t xUsart3Ready;
 
 uint32_t cnt1;
 uint32_t cnt2;
+uint32_t cnt3;
 uint32_t value[9];
 uint8_t cnt;
+uint8_t msg[5];
 
 motor_param_t dc_driver;
 
@@ -53,8 +59,6 @@ void vTask(void *pvParameters)
 	while(1)
 	{
 		(*pulPtr)++;
-
-		//halUsart3SendCommand(0, 100, 10);
 
 		vTaskDelay(pdMS_TO_TICKS(1000));
 	}
@@ -103,14 +107,39 @@ void vParseTask(void *pvParameters)
 			dc_driver.right_motor_speed = right_motor_speed;
 			dc_driver.left_motor_speed = left_motor_speed;
 
-			halUsart3SendCommand(SPEED, right_motor_speed, left_motor_speed, 100);
+			uint8_t rm1 = (right_motor_speed >> 8) & 0xFF;
+			uint8_t rm2 = right_motor_speed & 0xFF;
+
+			uint8_t lm1 = (left_motor_speed >> 8) & 0xFF;
+			uint8_t lm2 = left_motor_speed & 0xFF;
+
+			msg[0] = SPEED;
+			msg[1] = rm1;
+			msg[2] = rm2;
+			msg[3] = lm1;
+			msg[4] = lm2;
+
+			xEventGroupWaitBits(xUsart3Ready, USART3_READY_EVT, pdTRUE, pdFALSE, pdMS_TO_TICKS(100));
+
+			Usart3TransmitDMA((uint32_t)msg);
+
+			//halUsart3SendCommand(SPEED, right_motor_speed, left_motor_speed, 100);
 		}
 	}
 }
 
+void vUsart3TxCallback(void)
+{
+	BaseType_t xHigherTaskWoken = pdFALSE;
+
+	if(xEventGroupSetBitsFromISR(xUsart3Ready, USART3_READY_EVT, &xHigherTaskWoken) != pdPASS) cnt3++;
+
+	portYIELD_FROM_ISR(xHigherTaskWoken);
+}
+
 void vTimerCallback(void)
 {
-	uint32_t v = halTim3GetValue();
+	uint32_t v = Tim3GetValue();
 	BaseType_t xHigherTaskWoken = pdFALSE;
 
 	if(v > 8000) cnt = 8;
@@ -133,20 +162,22 @@ void vTimerCallback(void)
 int main(void)
 {
  	halUsart2Init();
- 	halUsart3Init();
- 	halTim3InitImputCaptureMode();
+ 	Usart3DMAInit();
+ 	Tim3InitImputCaptureMode();
 
- 	halTim3RegisterCallback(vTimerCallback);
+ 	Tim3RegisterCallback(vTimerCallback);
+ 	Usart3RegisterCallback(vUsart3TxCallback);
 
  	xFlysky = xQueueCreate(2, sizeof(value));
+ 	xUsart3Ready = xEventGroupCreate();
+ 	xEventGroupSetBits(xUsart3Ready, USART3_READY_EVT);
 
 	xTaskCreate(vTask, "Task1", 512, &cnt1, 1, NULL);
 	xTaskCreate(vParseTask, "ParseTask", 512, &dc_driver, 1, NULL);
 
 	halUsart2Send("System ready\r\n", 100);
-	halUsart3Put(85, 100);
 
-	halTim3Start();
+	Tim3Start();
 
 	vTaskStartScheduler();
 

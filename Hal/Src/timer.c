@@ -6,7 +6,7 @@
 
 static volatile void (*_timerCallback)(void) = NULL;
 
-HAL_Status_t halTim3InitImputCaptureMode(void)
+Status_t Tim3InitImputCaptureMode(void)
 {
 	//Turn-on GPIOA clock
 	RCC->AHB2ENR |= RCC_AHB2ENR_GPIOCEN;
@@ -20,14 +20,8 @@ HAL_Status_t halTim3InitImputCaptureMode(void)
 	//Turn-on TIM3 clock
 	RCC->APB1ENR1 |= RCC_APB1ENR1_TIM3EN;
 
-	//Prescaler
-	//TIM3->PSC = SYSTEM_CLOCK / 39;
-
 	//Select the active input TI1
 	TIM3->CCMR1 |= TIM_CCMR1_CC1S_0;
-
-	//Input capture filter N = 8
-	//TIM3->CCMR1 |= TIM_CCMR1_IC1F_0 | TIM_CCMR1_IC1F_1;
 
 	//Falling edge
 	TIM3->CCER |= TIM_CCER_CC1P;
@@ -35,38 +29,34 @@ HAL_Status_t halTim3InitImputCaptureMode(void)
 	//Enable capture from the counter
 	TIM3->CCER |= TIM_CCER_CC1E;
 
-	//Reloading settings
-	//TIM3->SR = 0;
-	//TIM3->EGR = TIM_EGR_UG;
-
 	//Interrupt
 	TIM3->DIER |= TIM_DIER_CC1IE;
 
 	NVIC_SetPriority(TIM3_IRQn, 15);
 	NVIC_EnableIRQ(TIM3_IRQn);
 
-	return HAL_OK;
+	return STATUS_OK;
 }
 
-HAL_Status_t halTim3Start(void)
+Status_t Tim3Start(void)
 {
 	TIM3->CR1 |= TIM_CR1_CEN;
 
-	return HAL_OK;
+	return STATUS_OK;
 }
 
-HAL_Status_t halTim3SetInterruptPriority(uint32_t priority)
+Status_t Tim3SetInterruptPriority(uint32_t priority)
 {
 	NVIC_SetPriority(TIM3_IRQn, priority);
 
-	return HAL_OK;
+	return STATUS_OK;
 }
 
-HAL_Status_t halTim3RegisterCallback(void(*callback)(void))
+Status_t Tim3RegisterCallback(void(*callback)(void))
 {
 	_timerCallback = callback;
 
-	return HAL_OK;
+	return STATUS_OK;
 }
 
 void TIM3_IRQHandler(void)
@@ -82,7 +72,7 @@ void TIM3_IRQHandler(void)
 	}
 }
 
-uint32_t halTim3GetValue(void)
+uint32_t Tim3GetValue(void)
 {
 	uint32_t a = TIM3->CCR1;
 	TIM3->CNT = 0;

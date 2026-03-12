@@ -4,12 +4,13 @@
 #include <stdint.h>
 #include "common.h"
 
-HAL_Status_t halUsart2Init(void);
-HAL_Status_t halUsart2Put(const char data, uint32_t timeout);
-HAL_Status_t halUsart2Send(const char* txt, uint32_t timeout);
+Status_t halUsart2Init(void);
+Status_t halUsart2Put(const char data, uint32_t timeout);
+Status_t halUsart2Send(const char* txt, uint32_t timeout);
 
-HAL_Status_t halUsart3Init(void);
-HAL_Status_t halUsart3Put(uint8_t data, uint32_t timeout);
-HAL_Status_t halUsart3SendCommand(uint8_t command, int16_t right_motor, int16_t left_motor, uint32_t timeout);
+Status_t Usart3DMAInit(void);
+Status_t Usart3RegisterCallback(void(*callback)(void));
+Status_t Usart3TransmitDMA(uint32_t addr_tx);
+Status_t Usart3ReceiverDMA(uint32_t addr_rx);
 
 #endif

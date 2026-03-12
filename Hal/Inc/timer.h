@@ -4,10 +4,10 @@
 #include <stdint.h>
 #include "common.h"
 
-HAL_Status_t halTim3InitImputCaptureMode(void);
-HAL_Status_t halTim3Start(void);
-HAL_Status_t halTim3SetInterruptPriority(uint32_t priority);
-HAL_Status_t halTim3RegisterCallback(void(*callback)(void));
-uint32_t halTim3GetValue(void);
+Status_t Tim3InitImputCaptureMode(void);
+Status_t Tim3Start(void);
+Status_t Tim3SetInterruptPriority(uint32_t priority);
+Status_t Tim3RegisterCallback(void(*callback)(void));
+uint32_t Tim3GetValue(void);
 
 #endif
